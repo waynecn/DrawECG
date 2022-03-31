@@ -10,17 +10,45 @@
 EcgWidget::EcgWidget(QWidget *parent) : QWidget(parent)
 {
     setAttribute(Qt::WA_DeleteOnClose);
+    setStyleSheet("background-color:rgba(255,255,255,1);");
 
     m_sampleRate = 1000;
     m_fGain = 10.0;
     m_iSpeed = 50;
     m_bAntialiasing = false;
+    m_bOptimize = false;
 
     m_pMenu = new QMenu();
+    m_pMenu->setStyleSheet("QMenu{\
+                           background:rgba(255,255,255,1);\
+                           border:none;\
+                         }\
+                         QMenu::item{\
+                           padding:11px 32px;\
+                           color:rgba(51,51,51,1);\
+                           font-size:12px;\
+                         }\
+                         QMenu::item:hover{\
+                           background-color:#409CE1;\
+                         }\
+                         QMenu::item:selected{\
+                           background-color:#409CE1;\
+                         }");
     QMenu *gain = m_pMenu->addMenu("Gain");
     QAction *gain5 = gain->addAction("5");
     QAction *gain10 = gain->addAction("10");
     QAction *gain20 = gain->addAction("20");
+    QActionGroup *gainGroup = new QActionGroup(this);
+    gainGroup->addAction(gain5);
+    gainGroup->addAction(gain10);
+    gainGroup->addAction(gain20);
+    gainGroup->setExclusive(true);
+    gain5->setCheckable(true);
+    gain5->setChecked(false);
+    gain10->setCheckable(true);
+    gain10->setChecked(true);
+    gain20->setCheckable(true);
+    gain20->setChecked(false);
     connect(gain5, SIGNAL(triggered()), this, SLOT(onGain5Triggered()));
     connect(gain10, SIGNAL(triggered()), this, SLOT(onGain10Triggered()));
     connect(gain20, SIGNAL(triggered()), this, SLOT(onGain20Triggered()));
@@ -31,6 +59,17 @@ EcgWidget::EcgWidget(QWidget *parent) : QWidget(parent)
     QAction *speed25 = speed->addAction("25");
     QAction *speed50 = speed->addAction("50");
     QAction *speed100 = speed->addAction("100");
+    QActionGroup *speedGroup = new QActionGroup(this);
+    speedGroup->addAction(speed25);
+    speedGroup->addAction(speed50);
+    speedGroup->addAction(speed100);
+    speedGroup->setExclusive(true);
+    speed25->setCheckable(true);
+    speed25->setChecked(false);
+    speed50->setCheckable(true);
+    speed50->setChecked(true);
+    speed100->setCheckable(true);
+    speed100->setChecked(false);
     connect(speed25, SIGNAL(triggered()), this, SLOT(onSpeed25Triggered()));
     connect(speed50, SIGNAL(triggered()), this, SLOT(onSpeed50Triggered()));
     connect(speed100, SIGNAL(triggered()), this, SLOT(onSpeed100Triggered()));
@@ -41,6 +80,13 @@ EcgWidget::EcgWidget(QWidget *parent) : QWidget(parent)
     smoothAct->setCheckable(true);
     smoothAct->setChecked(false);
     connect(smoothAct, SIGNAL(triggered()), this, SLOT(onAntialiasingTriggered()));
+
+    m_pMenu->addSeparator();
+
+    QAction *promptEcg = m_pMenu->addAction("Optimize");
+    promptEcg->setCheckable(true);
+    promptEcg->setChecked(false);
+    connect(promptEcg, SIGNAL(triggered()), this, SLOT(onOptimizeTriggered()));
 }
 
 EcgWidget::~EcgWidget() {
@@ -93,8 +139,30 @@ void EcgWidget::ReadEcgFile(QString &file) {
 void EcgWidget::paintEvent(QPaintEvent *event) {
     QPainter painter(this);
     int w = this->width(), h = this->height();
+    drawGrid(painter, w, h);
     drawWave(painter, w, h);
     event->accept();
+}
+
+void EcgWidget::drawGrid(QPainter &painter, int w, int h) {
+    painter.save();
+    painter.setPen(QColor(253, 180, 218));
+    int bigGrid = (5.0 * DOTS_PER_MM);
+    for (int i = 0; i <= w / bigGrid; ++i) {
+        painter.drawLine(0, i * bigGrid, w, i * bigGrid);
+        painter.drawLine(i * bigGrid, 0, i * bigGrid, h);
+    }
+    for (int x = 0; x <= w / bigGrid; ++x) {
+        for (int y = 0; y <= h / bigGrid; ++y) {
+            for (int i = 1; i < 5; ++i) {
+                for (int j = 1; j < 5; ++j) {
+                    QPointF p((qreal)(1.0 * x * bigGrid + 1.0 * i * DOTS_PER_MM), (qreal)(1.0 * y * bigGrid + 1.0 * j * DOTS_PER_MM));
+                    painter.drawPoint(p);
+                }
+            }
+        }
+    }
+    painter.restore();
 }
 
 void EcgWidget::drawWave(QPainter &painter, int width, int height) {
@@ -132,12 +200,41 @@ void EcgWidget::drawWave(QPainter &painter, int width, int height) {
             QJsonArray waveArr = singleWaveItem["value"].toArray();
             int waveLen = waveArr.size();
             QVector<QPointF> vecPoints;
-            for (int i = 0; i < waveLen; ++i) {
-                if (i / fNumPerPixel > rectWidth) {
-                    break;
+            if (!m_bOptimize) {
+                for (int i = 0; i < waveLen; ++i) {
+                    if (i / fNumPerPixel > rectWidth - DOTS_PER_MM * 2) {
+                        break;
+                    }
+                    QPointF p((qreal)(col * rectWidth + i / fNumPerPixel), (qreal)(row * rowHeight + middleHeight - (waveArr[i].toInt() * fPixelPerUv)));
+                    vecPoints.append(p);
                 }
-                QPointF p((qreal)(col * rectWidth + i / fNumPerPixel), (qreal)(row * rowHeight + middleHeight - (waveArr[i].toInt() * fPixelPerUv)));
-                vecPoints.append(p);
+            } else {
+                int numPerPixel = fNumPerPixel + 0.5;
+                for (int i = 0; i < waveLen; i+=numPerPixel) {
+                    if (i / fNumPerPixel > rectWidth - DOTS_PER_MM * 2) {
+                        break;
+                    }
+                    int minIndex = i;
+                    int maxIndex = i;
+                    int minValue = waveArr[i].toInt();
+                    int maxValue = waveArr[i].toInt();
+                    for (int j = 0; j < numPerPixel; ++j) {
+                        if (i + j >= waveLen) {
+                            break;
+                        }
+                        if (minValue > waveArr[i + j].toInt()) {
+                            minValue = waveArr[i + j].toInt();
+                            minIndex = i + j;
+                        }
+                        if (maxValue < waveArr[i + j].toInt()) {
+                            maxValue = waveArr[i + j].toInt();
+                            maxIndex = i + j;
+                        }
+                    }
+                    QPointF minPoint((qreal)(col * rectWidth + minIndex / fNumPerPixel), (qreal)(row * rowHeight + middleHeight - (minValue * fPixelPerUv)));
+                    QPointF maxPoint((qreal)(col * rectWidth + maxIndex / fNumPerPixel), (qreal)(row * rowHeight + middleHeight - (maxValue * fPixelPerUv)));
+                    minIndex >= maxIndex ? vecPoints.append(maxPoint) : vecPoints.append(minPoint);
+                }
             }
 
             painter.save();
@@ -185,5 +282,10 @@ void EcgWidget::onSpeed100Triggered() {
 
 void EcgWidget::onAntialiasingTriggered() {
     m_bAntialiasing = !m_bAntialiasing;
+    update();
+}
+
+void EcgWidget::onOptimizeTriggered() {
+    m_bOptimize = !m_bOptimize;
     update();
 }

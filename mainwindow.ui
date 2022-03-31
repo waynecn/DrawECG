@@ -23,6 +23,9 @@
       <height>23</height>
      </rect>
     </property>
+    <property name="styleSheet">
+     <string notr="true">background-color: rgb(85, 170, 255);</string>
+    </property>
     <property name="text">
      <string>打开ecg文件</string>
     </property>

@@ -20,6 +20,7 @@ private:
     void mousePressEvent(QMouseEvent *event);
     void mouseReleaseEvent(QMouseEvent *event);
     void paintEvent(QPaintEvent *event);
+    void drawGrid(QPainter &painter, int w, int h);
     void drawWave(QPainter &painter, int width, int height);
 
 private:
@@ -30,6 +31,7 @@ private:
     float m_fGain;
     int m_iSpeed;
     bool m_bAntialiasing;
+    bool m_bOptimize;//draw ecg graphic more perfect
 
 signals:
 
@@ -41,6 +43,7 @@ public slots:
     void onSpeed50Triggered();
     void onSpeed100Triggered();
     void onAntialiasingTriggered();
+    void onOptimizeTriggered();
 };
 
 #endif // ECGWIDGET_H

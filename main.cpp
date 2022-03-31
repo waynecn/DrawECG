@@ -9,6 +9,10 @@ int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
 
+    QCoreApplication::setOrganizationName("wayne");
+    QCoreApplication::setOrganizationDomain("wayne.com");
+    QCoreApplication::setApplicationName("DrawECG");
+
     QScreen *screen = QGuiApplication::screens()[0];      //
     qreal dotsPerInchX = screen->physicalDotsPerInchX();
     qreal dotsPerInchY = screen->physicalDotsPerInchY();

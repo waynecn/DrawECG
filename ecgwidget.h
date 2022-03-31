@@ -6,6 +6,7 @@
 #include <QJsonDocument>
 #include <QPainter>
 #include <QMenu>
+#include <QtPrintSupport/QPrinter>
 
 class EcgWidget : public QWidget
 {
@@ -20,8 +21,8 @@ private:
     void mousePressEvent(QMouseEvent *event);
     void mouseReleaseEvent(QMouseEvent *event);
     void paintEvent(QPaintEvent *event);
-    void drawGrid(QPainter &painter, int w, int h);
-    void drawWave(QPainter &painter, int width, int height);
+    void drawGrid(QPainter &painter, int w, int h, double dDotsPerMM);
+    void drawWave(QPainter &painter, int width, int height, double dotsPerMM, double scale = 1.0);
 
 private:
     int m_leadNums; //lead num count: 12 15 18
@@ -32,6 +33,8 @@ private:
     int m_iSpeed;
     bool m_bAntialiasing;
     bool m_bOptimize;//draw ecg graphic more perfect
+    bool m_bDrawGrid;
+    bool m_bDrawPoint;
 
 signals:
 
@@ -44,6 +47,10 @@ public slots:
     void onSpeed100Triggered();
     void onAntialiasingTriggered();
     void onOptimizeTriggered();
+    void onDrawGridTriggered();
+    void onDrawPointTriggered();
+    void onPrintPreviewTriggered();
+    void printPreviewSlot(QPrinter *printer);
 };
 
 #endif // ECGWIDGET_H

@@ -4,6 +4,7 @@
 
 #include <QFileDialog>
 #include <QDebug>
+#include <QSettings>
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -20,13 +21,22 @@ MainWindow::~MainWindow()
 
 void MainWindow::on_openEcgFilePushButton_clicked()
 {
-    QUrl url = QFileDialog::getOpenFileUrl(this);
-    QString path = url.path();
-    qDebug() << "path:" << path;
-    if (!path.isEmpty()) {
-        path = path.mid(1);
+    QSettings settings;
+    QVariant val = settings.value("OpenFileDir");
+    QString dir;
+    if (val.isValid()) {
+        dir = val.toString();
+    } else {
+        dir = "C:/";
+    }
+    QString fileName = QFileDialog::getOpenFileName(this, tr("SelectEcgFile"), dir);
+    qDebug() << "fileName:" << fileName;
+    if (!fileName.isEmpty()) {
         EcgWidget *widget = new EcgWidget();
-        widget->ReadEcgFile(path);
+        widget->ReadEcgFile(fileName);
         widget->showMaximized();
     }
+    QFileInfo f(fileName);
+    qDebug() << "dir:" << f.dir().path();
+    settings.setValue("OpenFileDir", f.dir().path());
 }

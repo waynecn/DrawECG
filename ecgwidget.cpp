@@ -6,6 +6,10 @@
 #include <QJsonArray>
 #include <QJsonValue>
 #include <QJsonObject>
+#include <QMessageBox>
+#include <QtPrintSupport/QPrintPreviewDialog>
+#include <QGuiApplication>
+#include <QScreen>
 
 EcgWidget::EcgWidget(QWidget *parent) : QWidget(parent)
 {
@@ -17,6 +21,8 @@ EcgWidget::EcgWidget(QWidget *parent) : QWidget(parent)
     m_iSpeed = 50;
     m_bAntialiasing = false;
     m_bOptimize = false;
+    m_bDrawGrid = true;
+    m_bDrawPoint = true;
 
     m_pMenu = new QMenu();
     m_pMenu->setStyleSheet("QMenu{\
@@ -24,7 +30,7 @@ EcgWidget::EcgWidget(QWidget *parent) : QWidget(parent)
                            border:none;\
                          }\
                          QMenu::item{\
-                           padding:11px 32px;\
+                           padding:4px 16px;\
                            color:rgba(51,51,51,1);\
                            font-size:12px;\
                          }\
@@ -76,6 +82,20 @@ EcgWidget::EcgWidget(QWidget *parent) : QWidget(parent)
 
     m_pMenu->addSeparator();
 
+    QAction *gridAction = m_pMenu->addAction("DrawGrid");
+    gridAction->setCheckable(true);
+    gridAction->setChecked(true);
+    connect(gridAction, SIGNAL(triggered()), this, SLOT(onDrawGridTriggered()));
+
+    m_pMenu->addSeparator();
+
+    QAction *pointAction = m_pMenu->addAction("DrawPoint");
+    pointAction->setCheckable(true);
+    pointAction->setChecked(true);
+    connect(pointAction, SIGNAL(triggered()), this, SLOT(onDrawPointTriggered()));
+
+    m_pMenu->addSeparator();
+
     QAction *smoothAct = m_pMenu->addAction("Smooth");
     smoothAct->setCheckable(true);
     smoothAct->setChecked(false);
@@ -87,6 +107,11 @@ EcgWidget::EcgWidget(QWidget *parent) : QWidget(parent)
     promptEcg->setCheckable(true);
     promptEcg->setChecked(false);
     connect(promptEcg, SIGNAL(triggered()), this, SLOT(onOptimizeTriggered()));
+
+    m_pMenu->addSeparator();
+
+    QAction *printAction = m_pMenu->addAction("Print Preview");
+    connect(printAction, SIGNAL(triggered()), this, SLOT(onPrintPreviewTriggered()));
 }
 
 EcgWidget::~EcgWidget() {
@@ -126,6 +151,8 @@ void EcgWidget::ReadEcgFile(QString &file) {
             //qDebug() << "code:" << code;
             leadNum++;
         }
+    } else {
+        QMessageBox::warning(this, "Warn", "May not be ecg file.");
     }
 
     //qDebug() << "leadNum:" << leadNum;
@@ -139,25 +166,39 @@ void EcgWidget::ReadEcgFile(QString &file) {
 void EcgWidget::paintEvent(QPaintEvent *event) {
     QPainter painter(this);
     int w = this->width(), h = this->height();
-    drawGrid(painter, w, h);
-    drawWave(painter, w, h);
+    drawGrid(painter, w, h, DOTS_PER_MM);
+    drawWave(painter, w, h, DOTS_PER_MM);
+
+    painter.save();
+    QPen pen(Qt::blue);
+    QFont f("Consolas");
+    f.setBold(true);
+    painter.setPen(pen);
+    painter.setFont(f);
+    QString text = QString("Lead:%1 Gain:%2 Speed:%3").arg(m_leadNums).arg(m_fGain).arg(m_iSpeed);
+    painter.drawText(10, 20, text);
+    painter.restore();
     event->accept();
 }
 
-void EcgWidget::drawGrid(QPainter &painter, int w, int h) {
+void EcgWidget::drawGrid(QPainter &painter, int w, int h, double dDotsPerMM) {
     painter.save();
     painter.setPen(QColor(253, 180, 218));
-    int bigGrid = (5.0 * DOTS_PER_MM);
-    for (int i = 0; i <= w / bigGrid; ++i) {
-        painter.drawLine(0, i * bigGrid, w, i * bigGrid);
-        painter.drawLine(i * bigGrid, 0, i * bigGrid, h);
+    int bigGrid = (5.0 * dDotsPerMM);
+    if (m_bDrawGrid) {
+        for (int i = 0; i <= w / bigGrid; ++i) {
+            painter.drawLine(0, i * bigGrid, w, i * bigGrid);
+            painter.drawLine(i * bigGrid, 0, i * bigGrid, h);
+        }
     }
-    for (int x = 0; x <= w / bigGrid; ++x) {
-        for (int y = 0; y <= h / bigGrid; ++y) {
-            for (int i = 1; i < 5; ++i) {
-                for (int j = 1; j < 5; ++j) {
-                    QPointF p((qreal)(1.0 * x * bigGrid + 1.0 * i * DOTS_PER_MM), (qreal)(1.0 * y * bigGrid + 1.0 * j * DOTS_PER_MM));
-                    painter.drawPoint(p);
+    if (m_bDrawPoint) {
+        for (int x = 0; x <= w / bigGrid; ++x) {
+            for (int y = 0; y <= h / bigGrid; ++y) {
+                for (int i = 1; i < 5; ++i) {
+                    for (int j = 1; j < 5; ++j) {
+                        QPointF p((qreal)(1.0 * x * bigGrid + 1.0 * i * dDotsPerMM), (qreal)(1.0 * y * bigGrid + 1.0 * j * dDotsPerMM));
+                        painter.drawPoint(p);
+                    }
                 }
             }
         }
@@ -165,11 +206,11 @@ void EcgWidget::drawGrid(QPainter &painter, int w, int h) {
     painter.restore();
 }
 
-void EcgWidget::drawWave(QPainter &painter, int width, int height) {
+void EcgWidget::drawWave(QPainter &painter, int width, int height, double dotsPerMM, double scale) {
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing, m_bAntialiasing);
-    float fNumPerPixel = m_sampleRate * 1.0 / (m_iSpeed * DOTS_PER_MM);
-    float fPixelPerMv = m_fGain * DOTS_PER_MM;
+    float fNumPerPixel = m_sampleRate * 1.0 / (m_iSpeed * dotsPerMM);
+    float fPixelPerMv = m_fGain * dotsPerMM;
     float fPixelPerUv = 0.001 * fPixelPerMv;
     int rectWidth = width / 2, rowHeight = height / 6, middleHeight = rowHeight / 2;
     int cols = 0, rows = 0;
@@ -288,4 +329,46 @@ void EcgWidget::onAntialiasingTriggered() {
 void EcgWidget::onOptimizeTriggered() {
     m_bOptimize = !m_bOptimize;
     update();
+}
+
+void EcgWidget::onDrawGridTriggered() {
+    m_bDrawGrid = !m_bDrawGrid;
+    update();
+}
+
+void EcgWidget::onDrawPointTriggered() {
+    m_bDrawPoint = !m_bDrawPoint;
+    update();
+}
+
+void EcgWidget::onPrintPreviewTriggered() {
+    QPrinter printer(QPrinter::HighResolution);
+    printer.setFullPage(true);
+    printer.setPageSize(QPrinter::Custom);
+    printer.setOrientation(QPrinter::Landscape);
+    printer.setPaperSize(QPagedPaintDevice::A4);
+    QPrintPreviewDialog preview(&printer);
+    preview.setWindowFlags(preview.windowFlags() & Qt::WindowCloseButtonHint);
+    preview.setWindowTitle("Print Preview");
+    QScreen *screen = QGuiApplication::screens()[0];
+    int availableWidth = screen->availableGeometry().width();
+    int availableHeight = screen->availableGeometry().height();
+    preview.setMinimumSize(availableWidth, availableHeight);
+    connect(&preview, SIGNAL(paintRequested(QPrinter *)), SLOT(printPreviewSlot(QPrinter *)));
+    preview.exec();
+}
+
+void EcgWidget::printPreviewSlot(QPrinter *printer) {
+    double dDotsPerMMForPrinter = printer->pageRect().width() / 297.0;  //A4纸的尺寸是297mm*210mm 如果是横着打印 则297为宽度
+    double dScale = dDotsPerMMForPrinter / DOTS_PER_MM; //打印机的窗口和桌面窗口的尺寸相比 放大倍数 用于调整文字
+    int w = printer->pageRect().width() - 10 * dDotsPerMMForPrinter,    //边框有1cm左右 减去1cm的像素宽度防止绘制时显示不完整
+                h = printer->pageRect().height();
+
+    QPainter painter;
+    painter.begin(printer);
+
+    drawGrid(painter, w, h, dDotsPerMMForPrinter);
+    drawWave(painter, w, h, dDotsPerMMForPrinter, dScale);
+
+    painter.end();
 }

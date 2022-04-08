@@ -281,7 +281,7 @@ void EcgWidget::drawWave(QPainter &painter, int width, int height, double dotsPe
             painter.save();
             painter.setPen(QPen(Qt::red));
             painter.setFont(QFont("Helvetica [Cronyx]", 12, 30));
-            painter.drawText(vecPoints[0], leadName);
+            painter.drawText(col * rectWidth, row * rowHeight + middleHeight, leadName);
             painter.restore();
             for (int i = 0; i < vecPoints.size() - 1; ++i) {
                 painter.drawLine(vecPoints[i], vecPoints[i + 1]);
@@ -369,6 +369,14 @@ void EcgWidget::printPreviewSlot(QPrinter *printer) {
 
     drawGrid(painter, w, h, dDotsPerMMForPrinter);
     drawWave(painter, w, h, dDotsPerMMForPrinter, dScale);
-
+    painter.save();
+    QPen pen(Qt::blue);
+    QFont f("Consolas");
+    f.setBold(true);
+    painter.setPen(pen);
+    painter.setFont(f);
+    QString text = QString("Lead:%1 Gain:%2 Speed:%3").arg(m_leadNums).arg(m_fGain).arg(m_iSpeed);
+    painter.drawText(10 * dScale, 20 * dScale, text);
+    painter.restore();
     painter.end();
 }
